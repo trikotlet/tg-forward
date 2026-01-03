@@ -32,6 +32,7 @@ dp = Dispatcher()
 @dp.message()
 async def forward_message(message: types.Message):
     """Пересылает все сообщения администратору"""
+    logger.info(f"Получено сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'}")
     try:
         # Получаем информацию об отправителе
         user_info = f"👤 <b>Пользователь:</b> {message.from_user.full_name or 'Неизвестный'}\n"

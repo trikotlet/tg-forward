@@ -20,21 +20,17 @@ cd tg-forward
 
 ### 2. Настройте переменные окружения
 
-Скопируйте пример файла окружения:
-
-```bash
-cp .env_example .env
-```
-
-Заполните `.env` файл:
+Заполните `.env` файл (он уже создан):
 
 ```env
 # Токен вашего Telegram бота (получить у @BotFather)
-BOT_TOKEN=your_bot_token_here
+BOT_TOKEN=ваш_токен_бота
 
 # Ваш личный Chat ID (узнать у @userinfobot или через бота)
-ADMIN_CHAT_ID=your_chat_id_here
+ADMIN_CHAT_ID=ваш_chat_id
 ```
+
+**Важно:** Убедитесь, что `ADMIN_CHAT_ID` является числом (например: `123456789`)
 
 ### 3. Получите токен бота
 

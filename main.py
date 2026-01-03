@@ -19,6 +19,12 @@ ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 if not BOT_TOKEN or not ADMIN_CHAT_ID:
     raise ValueError("BOT_TOKEN и ADMIN_CHAT_ID должны быть установлены в .env файле")
 
+# Конвертируем ADMIN_CHAT_ID в int
+try:
+    ADMIN_CHAT_ID = int(ADMIN_CHAT_ID)
+except ValueError:
+    raise ValueError("ADMIN_CHAT_ID должен быть числом (Chat ID)")
+
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -126,23 +132,14 @@ async def forward_message(message: types.Message):
 
     except Exception as e:
         logger.error(f"Ошибка при пересылке сообщения: {e}")
-        # Уведомляем администратора об ошибке
-        await bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=f"❌ <b>Ошибка при обработке сообщения:</b>\n<code>{str(e)}</code>",
-            parse_mode=ParseMode.HTML
-        )
+        logger.error(f"Проверьте правильность ADMIN_CHAT_ID: {ADMIN_CHAT_ID}")
+        # Не пытаемся отправить сообщение администратору об ошибке,
+        # чтобы избежать рекурсивных ошибок
 
 async def main():
     """Главная функция для запуска бота"""
     logger.info("Бот запущен и готов к работе!")
-
-    # Уведомляем администратора о запуске
-    await bot.send_message(
-        chat_id=ADMIN_CHAT_ID,
-        text="🚀 <b>Бот успешно запущен!</b>\n\nЯ буду пересылать вам все сообщения, которые придут в бота.",
-        parse_mode=ParseMode.HTML
-    )
+    logger.info(f"Администратор Chat ID: {ADMIN_CHAT_ID}")
 
     # Запускаем polling
     await dp.start_polling(bot)

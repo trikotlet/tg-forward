@@ -1,13 +1,24 @@
-# #region agent log - hypothesis H: script execution start
 import json
-import time
-import sys
+import logging
+import logging.handlers
 import os
+import signal
+import sys
+import time
+from collections import defaultdict
+from pathlib import Path
+
+# Настройки локального debug-лога (работает и в Docker)
+BASE_DIR = Path(__file__).resolve().parent
+DEBUG_DIR = BASE_DIR / ".cursor"
+DEBUG_LOG_PATH = DEBUG_DIR / "debug.log"
+DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 def debug_log(hypothesis_id, message, data=None):
+    """Пишем диагностический лог в .cursor/debug.log без выброса исключений."""
     log_entry = {
         "sessionId": "debug-session",
-        "runId": "fourth-run",
+        "runId": "main-run",
         "hypothesisId": hypothesis_id,
         "location": "main.py",
         "message": message,
@@ -15,28 +26,17 @@ def debug_log(hypothesis_id, message, data=None):
         "timestamp": int(time.time() * 1000)
     }
     try:
-        log_path = "/Users/romansokolov/Cursor/002 VibeCoding Tg bot/.cursor/debug.log"
-        with open(log_path, "a") as f:
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
-        print(f"✅ Debug log written: {message}")
-    except Exception as e:
-        print(f"❌ Failed to write debug log: {e}")
+    except Exception:
+        pass
 
 debug_log("H", "main.py script started", {
     "python_version": sys.version,
     "current_dir": os.getcwd(),
     "script_path": __file__
 })
-# #endregion
 
-import os
-import logging
-import logging.handlers
-from pathlib import Path
-from collections import defaultdict
-import signal
-
-# #region agent log - hypothesis G: import errors
 try:
     from aiogram import Bot, Dispatcher, types, Router
     from aiogram.enums import ParseMode
@@ -49,34 +49,13 @@ except ImportError as e:
     print(f"❌ Ошибка импорта aiogram: {e}")
     print("Установите зависимости: pip install -r requirements.txt")
     exit(1)
-# #endregion
 
 # Загружаем переменные окружения
 load_dotenv()
 
-# Создаем папку logs если не существует
 Path("logs").mkdir(exist_ok=True)
 
-# #region agent log - hypothesis A: env file not loaded
-import json
-def debug_log(hypothesis_id, message, data=None):
-    log_entry = {
-        "sessionId": "debug-session",
-        "runId": "initial-run",
-        "hypothesisId": hypothesis_id,
-        "location": "main.py",
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000)
-    }
-    try:
-        with open("/Users/romansokolov/Cursor/002 VibeCoding Tg bot/.cursor/debug.log", "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-    except Exception as e:
-        pass  # Ignore log failures
-
 debug_log("A", "Environment loaded", {"bot_token_exists": bool(os.getenv('BOT_TOKEN')), "admin_chat_id_exists": bool(os.getenv('ADMIN_CHAT_ID'))})
-# #endregion
 
 # Настройка структурированного логирования с ротацией
 log_formatter = logging.Formatter(
@@ -143,7 +122,7 @@ router = Router()
 async def ping(message: types.Message):
     """Проверка работоспособности бота"""
     await message.reply("🤖 Бот работает и готов к работе!")
-    logger.info(f"Health check от пользователя {message.from_user.id}")
+    logger.info(f"Health check от пользователя {message.from_user.id if message.from_user else 'unknown'}")
 
 # Функция проверки rate limiting
 def check_rate_limit(user_id: int) -> bool:
@@ -172,10 +151,15 @@ dp.include_router(router)
 @dp.message()
 async def forward_message(message: types.Message):
     """Пересылает все сообщения администратору"""
+    user = message.from_user
+    user_id = user.id if user else 0
+    user_full_name = user.full_name if user and user.full_name else "Неизвестный"
+    username = user.username if user and user.username else None
+
     # #region agent log - hypothesis D: message received
     debug_log("D", "Message received", {
-        "user_id": message.from_user.id if message.from_user else None,
-        "chat_id": message.chat.id,
+        "user_id": user_id or None,
+        "chat_id": message.chat.id if message.chat else None,
         "message_type": message.content_type,
         "has_text": bool(message.text),
         "has_photo": bool(message.photo),
@@ -183,20 +167,20 @@ async def forward_message(message: types.Message):
     })
     # #endregion
 
-    logger.info(f"Получено сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'}")
+    logger.info(f"Получено сообщение от пользователя {user_id if user else 'unknown'}")
 
     # Проверяем rate limiting
-    if not check_rate_limit(message.from_user.id if message.from_user else 0):
-        logger.warning(f"Сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'} заблокировано rate limiting")
+    if not check_rate_limit(user_id):
+        logger.warning(f"Сообщение от пользователя {user_id if user else 'unknown'} заблокировано rate limiting")
         return
 
     try:
         # Получаем информацию об отправителе
-        user_info = f"👤 <b>Пользователь:</b> {message.from_user.full_name or 'Неизвестный'}\n"
-        user_info += f"🆔 <b>ID:</b> <code>{message.from_user.id}</code>\n"
+        user_info = f"👤 <b>Пользователь:</b> {user_full_name}\n"
+        user_info += f"🆔 <b>ID:</b> <code>{user_id or 'N/A'}</code>\n"
 
-        if message.from_user.username:
-            user_info += f"📱 <b>Username:</b> @{message.from_user.username}\n"
+        if username:
+            user_info += f"📱 <b>Username:</b> @{username}\n"
 
         user_info += f"💬 <b>Чат ID:</b> <code>{message.chat.id}</code>\n"
         user_info += f"📅 <b>Время:</b> {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -292,14 +276,14 @@ async def forward_message(message: types.Message):
                 parse_mode=ParseMode.HTML
             )
 
-        logger.info(f"Переслано сообщение от пользователя {message.from_user.id}")
+        logger.info(f"Переслано сообщение от пользователя {user_id if user else 'unknown'}")
         # #region agent log - hypothesis E: message forwarded successfully
-        debug_log("E", "Message forwarded successfully", {"user_id": message.from_user.id if message.from_user else None})
+        debug_log("E", "Message forwarded successfully", {"user_id": user_id or None})
         # #endregion
 
     except Exception as e:
         # #region agent log - hypothesis E: forwarding error
-        debug_log("E", "Message forwarding error", {"error": str(e), "admin_chat_id": ADMIN_CHAT_ID, "user_id": message.from_user.id if message.from_user else None})
+        debug_log("E", "Message forwarding error", {"error": str(e), "admin_chat_id": ADMIN_CHAT_ID, "user_id": user_id or None})
         # #endregion
         logger.error(f"Ошибка при пересылке сообщения: {e}")
         logger.error(f"Проверьте правильность ADMIN_CHAT_ID: {ADMIN_CHAT_ID}")

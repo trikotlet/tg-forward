@@ -7,11 +7,17 @@ import json
 import sys
 import os
 import time
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+DEBUG_DIR = BASE_DIR / ".cursor"
+DEBUG_LOG_PATH = DEBUG_DIR / "debug.log"
+DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 def debug_log(hypothesis_id, message, data=None):
     log_entry = {
         "sessionId": "debug-session",
-        "runId": "fourth-run",
+        "runId": "local-run",
         "hypothesisId": hypothesis_id,
         "location": "run_local.py",
         "message": message,
@@ -19,12 +25,10 @@ def debug_log(hypothesis_id, message, data=None):
         "timestamp": int(time.time() * 1000)
     }
     try:
-        log_path = "/Users/romansokolov/Cursor/002 VibeCoding Tg bot/.cursor/debug.log"
-        with open(log_path, "a") as f:
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
-        print(f"✅ Debug log written: {message}")
-    except Exception as e:
-        print(f"❌ Failed to write debug log: {e}")
+    except Exception:
+        pass
 
 debug_log("J", "run_local.py script started", {
     "python_version": sys.version,

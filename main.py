@@ -1,21 +1,82 @@
+# #region agent log - hypothesis H: script execution start
+import json
+import time
+import sys
+import os
+
+def debug_log(hypothesis_id, message, data=None):
+    log_entry = {
+        "sessionId": "debug-session",
+        "runId": "fourth-run",
+        "hypothesisId": hypothesis_id,
+        "location": "main.py",
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        log_path = "/Users/romansokolov/Cursor/002 VibeCoding Tg bot/.cursor/debug.log"
+        with open(log_path, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+        print(f"✅ Debug log written: {message}")
+    except Exception as e:
+        print(f"❌ Failed to write debug log: {e}")
+
+debug_log("H", "main.py script started", {
+    "python_version": sys.version,
+    "current_dir": os.getcwd(),
+    "script_path": __file__
+})
+# #endregion
+
 import os
 import logging
 import logging.handlers
 from pathlib import Path
 from collections import defaultdict
-import time
 import signal
-from aiogram import Bot, Dispatcher, types, Router
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-from aiogram.filters import Command
-from dotenv import load_dotenv
+
+# #region agent log - hypothesis G: import errors
+try:
+    from aiogram import Bot, Dispatcher, types, Router
+    from aiogram.enums import ParseMode
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.filters import Command
+    from dotenv import load_dotenv
+    debug_log("G", "All aiogram imports successful")
+except ImportError as e:
+    debug_log("G", "Import error", {"error": str(e)})
+    print(f"❌ Ошибка импорта aiogram: {e}")
+    print("Установите зависимости: pip install -r requirements.txt")
+    exit(1)
+# #endregion
 
 # Загружаем переменные окружения
 load_dotenv()
 
 # Создаем папку logs если не существует
 Path("logs").mkdir(exist_ok=True)
+
+# #region agent log - hypothesis A: env file not loaded
+import json
+def debug_log(hypothesis_id, message, data=None):
+    log_entry = {
+        "sessionId": "debug-session",
+        "runId": "initial-run",
+        "hypothesisId": hypothesis_id,
+        "location": "main.py",
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        with open("/Users/romansokolov/Cursor/002 VibeCoding Tg bot/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception as e:
+        pass  # Ignore log failures
+
+debug_log("A", "Environment loaded", {"bot_token_exists": bool(os.getenv('BOT_TOKEN')), "admin_chat_id_exists": bool(os.getenv('ADMIN_CHAT_ID'))})
+# #endregion
 
 # Настройка структурированного логирования с ротацией
 log_formatter = logging.Formatter(
@@ -49,13 +110,22 @@ logging.getLogger("aiogram").setLevel(logging.WARNING)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
+# #region agent log - hypothesis A: empty tokens
+debug_log("A", "Tokens retrieved", {"bot_token_length": len(BOT_TOKEN or ""), "admin_chat_id_value": ADMIN_CHAT_ID})
+# #endregion
+
 if not BOT_TOKEN or not ADMIN_CHAT_ID:
+    debug_log("A", "Missing required tokens", {"bot_token": bool(BOT_TOKEN), "admin_chat_id": bool(ADMIN_CHAT_ID)})
     raise ValueError("BOT_TOKEN и ADMIN_CHAT_ID должны быть установлены в .env файле")
 
 # Конвертируем ADMIN_CHAT_ID в int
 try:
     ADMIN_CHAT_ID = int(ADMIN_CHAT_ID)
+    # #region agent log - hypothesis B: admin chat id conversion
+    debug_log("B", "Admin chat ID converted successfully", {"admin_chat_id": ADMIN_CHAT_ID})
+    # #endregion
 except ValueError:
+    debug_log("B", "Admin chat ID conversion failed", {"admin_chat_id_raw": ADMIN_CHAT_ID})
     raise ValueError("ADMIN_CHAT_ID должен быть числом (Chat ID)")
 
 # Глобальные переменные для rate limiting
@@ -83,9 +153,14 @@ def check_rate_limit(user_id: int) -> bool:
     # Очищаем старые сообщения (последние 60 секунд)
     user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 60]
 
+    # #region agent log - hypothesis C: rate limiting
+    debug_log("C", "Rate limit check", {"user_id": user_id, "message_count": len(user_messages[user_id]), "will_block": len(user_messages[user_id]) >= 10})
+    # #endregion
+
     # Проверяем лимит (не более 10 сообщений в минуту)
     if len(user_messages[user_id]) >= 10:
         logger.warning(f"Rate limit exceeded for user {user_id}")
+        debug_log("C", "Rate limit exceeded", {"user_id": user_id, "message_count": len(user_messages[user_id])})
         return False
 
     user_messages[user_id].append(now)
@@ -97,6 +172,17 @@ dp.include_router(router)
 @dp.message()
 async def forward_message(message: types.Message):
     """Пересылает все сообщения администратору"""
+    # #region agent log - hypothesis D: message received
+    debug_log("D", "Message received", {
+        "user_id": message.from_user.id if message.from_user else None,
+        "chat_id": message.chat.id,
+        "message_type": message.content_type,
+        "has_text": bool(message.text),
+        "has_photo": bool(message.photo),
+        "has_document": bool(message.document)
+    })
+    # #endregion
+
     logger.info(f"Получено сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'}")
 
     # Проверяем rate limiting
@@ -119,11 +205,17 @@ async def forward_message(message: types.Message):
         # Если сообщение текстовое
         if message.text:
             user_info += f"💭 <b>Сообщение:</b>\n{message.text}"
+            # #region agent log - hypothesis E: sending message
+            debug_log("E", "Sending text message", {"admin_chat_id": ADMIN_CHAT_ID, "message_length": len(user_info)})
+            # #endregion
             await bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=user_info,
                 parse_mode=ParseMode.HTML
             )
+            # #region agent log - hypothesis E: message sent successfully
+            debug_log("E", "Text message sent successfully", {"admin_chat_id": ADMIN_CHAT_ID})
+            # #endregion
 
         # Если есть фото
         elif message.photo:
@@ -201,8 +293,14 @@ async def forward_message(message: types.Message):
             )
 
         logger.info(f"Переслано сообщение от пользователя {message.from_user.id}")
+        # #region agent log - hypothesis E: message forwarded successfully
+        debug_log("E", "Message forwarded successfully", {"user_id": message.from_user.id if message.from_user else None})
+        # #endregion
 
     except Exception as e:
+        # #region agent log - hypothesis E: forwarding error
+        debug_log("E", "Message forwarding error", {"error": str(e), "admin_chat_id": ADMIN_CHAT_ID, "user_id": message.from_user.id if message.from_user else None})
+        # #endregion
         logger.error(f"Ошибка при пересылке сообщения: {e}")
         logger.error(f"Проверьте правильность ADMIN_CHAT_ID: {ADMIN_CHAT_ID}")
         # Не пытаемся отправить сообщение администратору об ошибке,
@@ -210,6 +308,10 @@ async def forward_message(message: types.Message):
 
 async def main():
     """Главная функция для запуска бота"""
+    # #region agent log - hypothesis F: bot startup
+    debug_log("F", "Bot startup initiated", {"admin_chat_id": ADMIN_CHAT_ID})
+    # #endregion
+
     logger.info("Бот запущен и готов к работе!")
     logger.info(f"Администратор Chat ID: {ADMIN_CHAT_ID}")
 
@@ -223,11 +325,20 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
+        # #region agent log - hypothesis F: polling started
+        debug_log("F", "Starting polling", {"admin_chat_id": ADMIN_CHAT_ID})
+        # #endregion
         # Запускаем polling
         await dp.start_polling(bot)
     except KeyboardInterrupt:
+        # #region agent log - hypothesis F: bot stopped by user
+        debug_log("F", "Bot stopped by user signal")
+        # #endregion
         logger.info("Бот остановлен пользователем")
     except Exception as e:
+        # #region agent log - hypothesis F: polling error
+        debug_log("F", "Polling error", {"error": str(e)})
+        # #endregion
         logger.error(f"Неожиданная ошибка при работе бота: {e}")
         raise
     finally:

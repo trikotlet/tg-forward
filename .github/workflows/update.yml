@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  PROJECT_PATH: ${{ github.workspace }}
+
 jobs:
   update:
     runs-on: self-hosted
@@ -15,17 +18,17 @@ jobs:
 
     - name: Stop existing containers
       run: |
-        cd /path/to/your/project
+        cd ${{ env.PROJECT_PATH }}
         docker-compose down || true
 
     - name: Pull latest changes
       run: |
-        cd /path/to/your/project
-        git pull origin main
+        cd ${{ env.PROJECT_PATH }}
+        git pull origin main || git pull origin master
 
     - name: Rebuild and start containers
       run: |
-        cd /path/to/your/project
+        cd ${{ env.PROJECT_PATH }}
         docker-compose up --build -d
 
     - name: Clean up old images

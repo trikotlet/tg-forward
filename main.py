@@ -1,16 +1,49 @@
 import os
 import logging
-from aiogram import Bot, Dispatcher, types
+import logging.handlers
+from pathlib import Path
+from collections import defaultdict
+import time
+import signal
+from aiogram import Bot, Dispatcher, types, Router
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.filters import Command
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения
 load_dotenv()
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+# Создаем папку logs если не существует
+Path("logs").mkdir(exist_ok=True)
+
+# Настройка структурированного логирования с ротацией
+log_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Файловый логгер с ротацией (10MB, 5 файлов)
+file_handler = logging.handlers.RotatingFileHandler(
+    "logs/bot.log",
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setFormatter(log_formatter)
+
+# Консольный логгер
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+# Настройка основного логгера
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Отключаем дублирование логов от aiogram
+logging.getLogger("aiogram").setLevel(logging.WARNING)
 
 # Получаем токены из переменных окружения
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -25,14 +58,52 @@ try:
 except ValueError:
     raise ValueError("ADMIN_CHAT_ID должен быть числом (Chat ID)")
 
+# Глобальные переменные для rate limiting
+user_messages = defaultdict(list)  # {user_id: [timestamps]}
+
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+
+# Создаем роутер для дополнительных команд
+router = Router()
+
+# Health check команда
+@router.message(Command("ping"))
+async def ping(message: types.Message):
+    """Проверка работоспособности бота"""
+    await message.reply("🤖 Бот работает и готов к работе!")
+    logger.info(f"Health check от пользователя {message.from_user.id}")
+
+# Функция проверки rate limiting
+def check_rate_limit(user_id: int) -> bool:
+    """Проверяет, не превышает ли пользователь лимит сообщений"""
+    now = time.time()
+
+    # Очищаем старые сообщения (последние 60 секунд)
+    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 60]
+
+    # Проверяем лимит (не более 10 сообщений в минуту)
+    if len(user_messages[user_id]) >= 10:
+        logger.warning(f"Rate limit exceeded for user {user_id}")
+        return False
+
+    user_messages[user_id].append(now)
+    return True
+
+# Включаем роутер в диспетчер
+dp.include_router(router)
 
 @dp.message()
 async def forward_message(message: types.Message):
     """Пересылает все сообщения администратору"""
     logger.info(f"Получено сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'}")
+
+    # Проверяем rate limiting
+    if not check_rate_limit(message.from_user.id if message.from_user else 0):
+        logger.warning(f"Сообщение от пользователя {message.from_user.id if message.from_user else 'unknown'} заблокировано rate limiting")
+        return
+
     try:
         # Получаем информацию об отправителе
         user_info = f"👤 <b>Пользователь:</b> {message.from_user.full_name or 'Неизвестный'}\n"
@@ -142,8 +213,25 @@ async def main():
     logger.info("Бот запущен и готов к работе!")
     logger.info(f"Администратор Chat ID: {ADMIN_CHAT_ID}")
 
-    # Запускаем polling
-    await dp.start_polling(bot)
+    # Функция для graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info("Получен сигнал завершения, останавливаю бота...")
+        raise KeyboardInterrupt
+
+    # Регистрируем обработчики сигналов
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        # Запускаем polling
+        await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при работе бота: {e}")
+        raise
+    finally:
+        logger.info("Завершение работы бота")
 
 if __name__ == '__main__':
     import asyncio

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: telegram-forward-bot
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      # Монтируем логи для просмотра
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

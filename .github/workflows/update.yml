@@ -1,0 +1,33 @@
+name: Update Bot
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Stop existing containers
+      run: |
+        cd /path/to/your/project
+        docker-compose down || true
+
+    - name: Pull latest changes
+      run: |
+        cd /path/to/your/project
+        git pull origin main
+
+    - name: Rebuild and start containers
+      run: |
+        cd /path/to/your/project
+        docker-compose up --build -d
+
+    - name: Clean up old images
+      run: |
+        docker image prune -f
